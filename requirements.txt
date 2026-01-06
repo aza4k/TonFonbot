@@ -1,0 +1,13 @@
+aiogram>=3.0.0
+
+chromadb
+ccxt
+pandas
+mplfinance
+python-dotenv
+loguru
+sqlalchemy
+pydantic-settings
+aiosqlite
+feedparser
+openai
