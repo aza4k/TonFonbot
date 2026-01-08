@@ -12,7 +12,11 @@ def main_menu_kb(lang: str = "en") -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=get_text("btn_chart", lang), callback_data="cmd_chart")
         ],
         [
+            InlineKeyboardButton(text=get_text("btn_stats", lang), callback_data="cmd_stats"),
             InlineKeyboardButton(text=get_text("btn_forecast", lang), callback_data="cmd_forecast")
+        ],
+        [
+            InlineKeyboardButton(text=get_text("btn_audit", lang), callback_data="cmd_audit")
         ],
         [
             InlineKeyboardButton(text=get_text("btn_channels", lang), callback_data="cmd_channels")

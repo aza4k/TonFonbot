@@ -5,3 +5,6 @@ class ContactAdminStates(StatesGroup):
 
 class AddChannelStates(StatesGroup):
     waiting_for_username = State()
+
+class TokenAuditStates(StatesGroup):
+    waiting_for_address = State()

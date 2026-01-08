@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     BOT_TOKEN: SecretStr
     GEMINI_API_KEY: SecretStr | None = None
     OPENROUTER_API_KEY: SecretStr
+    TONAPI_KEY: SecretStr | None = None
     ADMIN_IDS: List[int]
     PROXY_URL: str | None = None
 

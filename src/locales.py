@@ -16,7 +16,9 @@ TEXTS = {
         # Buttons - Main Menu
         "btn_price": "💎 Price Check",
         "btn_chart": "📉 24h Chart",
+        "btn_stats": "📊 Statistics",
         "btn_forecast": "🔮 AI Forecast",
+        "btn_audit": "🔍 Check Token",
         "btn_settings": "⚙️ Settings",
         "btn_about": "📖 Instruction",
         "btn_back": "🔙 Back to Main Menu",
@@ -38,6 +40,10 @@ TEXTS = {
         "chart_generating": "📊 Generating chart...",
         "chart_title": "📉 <b>TON/USDT 24h Analysis</b>",
         "chart_error": "⚠️ Failed to render chart",
+        "stats_generating": "📊 Generating statistics...",
+        "stats_title": "📊 <b>TON Market Statistics</b>",
+        "stats_error": "⚠️ Failed to generate statistics",
+        "stats_unavailable": "Statistics service unavailable",
         "forecast_loading": "🔮 Consulting Oracle...",
         "forecast_title": "🧠 <b>AI Market Prediction</b>",
         "forecast_error": "⚠️ AI Service unavailable.",
@@ -108,6 +114,14 @@ TEXTS = {
         "news_lang_body": "Select the language for news in this channel:",
         "news_lang_set": "✅ News language set to {language}.",
         "channel_deleted": "✅ Channel removed.",
+        
+        # Token Audit
+        "audit_scanning": "🔍 Scanning blockchain...",
+        "audit_not_found": "❌ Token not found on blockchain.",
+        "audit_error": "⚠️ Failed to analyze token.",
+        "audit_unavailable": "⚠️ Token scanner unavailable.",
+        "audit_prompt": "🔍 <b>Check Token</b>\n\nSend a TON Jetton address to analyze.\n\n<i>Example: EQ... or UQ...</i>",
+        "audit_invalid": "❌ Invalid address format. Please send a valid TON address (EQ... or UQ...)",
     },
     
     "ru": {
@@ -122,7 +136,9 @@ TEXTS = {
         # Buttons - Main Menu
         "btn_price": "💎 Проверить цену",
         "btn_chart": "📉 График 24ч",
+        "btn_stats": "📊 Статистика",
         "btn_forecast": "🔮 Прогноз ИИ",
+        "btn_audit": "🔍 Проверить токен",
         "btn_settings": "⚙️ Настройки",
         "btn_about": "📖 Инструкция",
         "btn_back": "🔙 Главное меню",
@@ -144,6 +160,10 @@ TEXTS = {
         "chart_generating": "📊 Генерация графика...",
         "chart_title": "📉 <b>TON/USDT Анализ за 24ч</b>",
         "chart_error": "⚠️ Не удалось создать график",
+        "stats_generating": "📊 Генерация статистики...",
+        "stats_title": "📊 <b>Статистика рынка TON</b>",
+        "stats_error": "⚠️ Не удалось создать статистику",
+        "stats_unavailable": "Сервис статистики недоступен",
         "forecast_loading": "🔮 Консультируюсь с Оракулом...",
         "forecast_title": "🧠 <b>Прогноз рынка от ИИ</b>",
         "forecast_error": "⚠️ Сервис ИИ недоступен.",
@@ -214,6 +234,14 @@ TEXTS = {
         "news_lang_body": "Выберите язык для новостей в этом канале:",
         "news_lang_set": "✅ Язык новостей: {language}.",
         "channel_deleted": "✅ Канал удалён.",
+        
+        # Token Audit
+        "audit_scanning": "🔍 Сканирование блокчейна...",
+        "audit_not_found": "❌ Токен не найден в блокчейне.",
+        "audit_error": "⚠️ Не удалось проанализировать токен.",
+        "audit_unavailable": "⚠️ Сканер токенов недоступен.",
+        "audit_prompt": "🔍 <b>Проверка токена</b>\n\nОтправьте адрес TON Jetton для анализа.\n\n<i>Пример: EQ... или UQ...</i>",
+        "audit_invalid": "❌ Неверный формат адреса. Отправьте корректный адрес TON (EQ... или UQ...)",
     },
     
     "uz": {
@@ -228,7 +256,9 @@ TEXTS = {
         # Buttons - Main Menu
         "btn_price": "💎 Narxni tekshirish",
         "btn_chart": "📉 24 soatlik grafik",
+        "btn_stats": "📊 Statistika",
         "btn_forecast": "🔮 AI Prognoz",
+        "btn_audit": "🔍 Tokenni tekshirish",
         "btn_settings": "⚙️ Sozlamalar",
         "btn_about": "📖 Yo'riqnoma",
         "btn_back": "🔙 Asosiy menyu",
@@ -250,6 +280,10 @@ TEXTS = {
         "chart_generating": "📊 Grafik yaratilmoqda...",
         "chart_title": "📉 <b>TON/USDT 24 soatlik tahlil</b>",
         "chart_error": "⚠️ Grafikni yaratib bo'lmadi",
+        "stats_generating": "📊 Statistika yaratilmoqda...",
+        "stats_title": "📊 <b>TON Bozor Statistikasi</b>",
+        "stats_error": "⚠️ Statistikani yaratib bo'lmadi",
+        "stats_unavailable": "Statistika xizmati mavjud emas",
         "forecast_loading": "🔮 Oracle bilan maslahatlashyapman...",
         "forecast_title": "🧠 <b>AI Bozor Prognozi</b>",
         "forecast_error": "⚠️ AI xizmati mavjud emas.",
@@ -320,6 +354,14 @@ TEXTS = {
         "news_lang_body": "Bu kanal uchun yangiliklar tilini tanlang:",
         "news_lang_set": "✅ Yangilik tili: {language}.",
         "channel_deleted": "✅ Kanal o'chirildi.",
+        
+        # Token Audit
+        "audit_scanning": "🔍 Blokcheyn skanerlanmoqda...",
+        "audit_not_found": "❌ Token blokcheynda topilmadi.",
+        "audit_error": "⚠️ Tokenni tahlil qilib bo'lmadi.",
+        "audit_unavailable": "⚠️ Token skaneri mavjud emas.",
+        "audit_prompt": "🔍 <b>Tokenni tekshirish</b>\n\nTahlil qilish uchun TON Jetton manzilini yuboring.\n\n<i>Misol: EQ... yoki UQ...</i>",
+        "audit_invalid": "❌ Noto'g'ri manzil formati. Iltimos, to'g'ri TON manzilini yuboring (EQ... yoki UQ...)",
     }
 }
 

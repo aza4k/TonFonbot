@@ -7,17 +7,21 @@ from loguru import logger
 from contextlib import suppress
 from aiogram.exceptions import TelegramBadRequest
 
+import re
+
 # Services
 from src.database.core import async_session_maker, User, Channel
 from src.services.price_monitor import PriceMonitor
 from src.services.chart_generator import ChartGenerator
 from src.services.ai_analyst import AIAnalyst
+from src.services.token_scanner import TokenScanner
+from src.services.stats_generator import StatsGenerator
 from src.bot.keyboards import (
     main_menu_kb, back_to_main_kb, settings_kb, cancel_kb, language_selection_kb,
     channels_list_kb, channel_manage_kb, price_interval_kb, news_lang_kb
 )
 from aiogram.fsm.context import FSMContext
-from src.bot.states import ContactAdminStates, AddChannelStates
+from src.bot.states import ContactAdminStates, AddChannelStates, TokenAuditStates
 from src.config import config
 from src.locales import get_text
 
@@ -28,6 +32,11 @@ router = Router()
 price_monitor: PriceMonitor = None
 chart_generator: ChartGenerator = None
 ai_analyst: AIAnalyst = None
+token_scanner: TokenScanner = None
+stats_generator: StatsGenerator = None
+
+# TON Address regex pattern (EQ... or UQ...)
+TON_ADDRESS_PATTERN = re.compile(r'^[EU]Q[A-Za-z0-9_-]{46}$')
 
 # --- Helpers ---
 async def get_or_create_user(telegram_id: int) -> User:
@@ -148,6 +157,34 @@ async def cb_chart(callback: types.CallbackQuery):
         else:
             await callback.message.edit_text(error_msg, reply_markup=back_to_main_kb(lang))
 
+@router.callback_query(F.data == "cmd_stats")
+async def cb_stats(callback: types.CallbackQuery):
+    """Generate and send market statistics image."""
+    lang = await get_user_lang(callback.from_user.id)
+    
+    if not stats_generator:
+        await callback.answer(get_text("stats_unavailable", lang), show_alert=True)
+        return
+    
+    await callback.answer(get_text("stats_generating", lang))
+    
+    buf = await stats_generator.generate_image()
+    if buf:
+        stats_file = BufferedInputFile(buf.read(), filename="stat.png")
+        media = types.InputMediaPhoto(media=stats_file, caption=get_text("stats_title", lang), parse_mode="HTML")
+        
+        try:
+            await callback.message.edit_media(media=media, reply_markup=back_to_main_kb(lang))
+        except Exception:
+            await callback.message.delete()
+            await callback.message.answer_photo(stats_file, caption=get_text("stats_title", lang), reply_markup=back_to_main_kb(lang), parse_mode="HTML")
+    else:
+        error_msg = get_text("stats_error", lang)
+        if callback.message.photo or callback.message.animation:
+            await callback.message.edit_caption(caption=error_msg, reply_markup=back_to_main_kb(lang))
+        else:
+            await callback.message.edit_text(error_msg, reply_markup=back_to_main_kb(lang))
+
 @router.callback_query(F.data == "cmd_forecast")
 async def cb_forecast(callback: types.CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
@@ -165,11 +202,13 @@ async def cb_forecast(callback: types.CallbackQuery):
     market_data_str = f"Current TON Price: ${current_price}" if current_price else "Price data unavailable."
     
     try:
-        forecast = await ai_analyst.generate_daily_forecast(market_data_str, lang)
+        forecast_dict = await ai_analyst.generate_daily_forecast(market_data_str)
+        forecast = forecast_dict.get(lang, forecast_dict.get('en', 'No forecast available.'))
     except Exception:
         forecast = get_text("forecast_unavailable", lang)
     
     response = f"{get_text('forecast_title', lang)}\n\n{forecast}"
+
     
     if callback.message.photo or callback.message.animation:
         if len(response) > 1000:
@@ -177,6 +216,55 @@ async def cb_forecast(callback: types.CallbackQuery):
         await callback.message.edit_caption(caption=response, reply_markup=back_to_main_kb(lang), parse_mode="HTML")
     else:
         await callback.message.edit_text(response, reply_markup=back_to_main_kb(lang), parse_mode="HTML")
+
+@router.callback_query(F.data == "cmd_audit")
+async def cb_audit(callback: types.CallbackQuery, state: FSMContext):
+    """Handle Check Token button - prompt user for address."""
+    lang = await get_user_lang(callback.from_user.id)
+    text = get_text("audit_prompt", lang)
+    
+    if callback.message.photo or callback.message.animation:
+        await callback.message.edit_caption(caption=text, reply_markup=cancel_kb(lang), parse_mode="HTML")
+    else:
+        await callback.message.edit_text(text, reply_markup=cancel_kb(lang), parse_mode="HTML")
+    
+    await state.set_state(TokenAuditStates.waiting_for_address)
+    with suppress(TelegramBadRequest):
+        await callback.answer()
+
+@router.message(TokenAuditStates.waiting_for_address)
+async def handle_audit_address(message: types.Message, state: FSMContext):
+    """Process token address submitted via Check Token button."""
+    lang = await get_user_lang(message.from_user.id)
+    text = message.text.strip()
+    
+    # Validate address format
+    if not TON_ADDRESS_PATTERN.match(text):
+        await message.answer(get_text("audit_invalid", lang), reply_markup=cancel_kb(lang), parse_mode="HTML")
+        return
+    
+    await state.clear()
+    
+    if not token_scanner:
+        await message.answer(get_text("audit_unavailable", lang), reply_markup=back_to_main_kb(lang), parse_mode="HTML")
+        return
+    
+    status_msg = await message.answer(get_text("audit_scanning", lang), parse_mode="HTML")
+    
+    try:
+        token_data = await token_scanner.scan_token(text)
+        
+        if not token_data:
+            await status_msg.edit_text(get_text("audit_not_found", lang), reply_markup=back_to_main_kb(lang), parse_mode="HTML")
+            return
+        
+        analysis = token_scanner.analyze_security(token_data)
+        report = token_scanner.format_audit_report(analysis, lang)
+        await status_msg.edit_text(report, reply_markup=back_to_main_kb(lang), parse_mode="HTML")
+        
+    except Exception as e:
+        logger.error(f"Token audit error: {e}")
+        await status_msg.edit_text(get_text("audit_error", lang), reply_markup=back_to_main_kb(lang), parse_mode="HTML")
 
 @router.callback_query(F.data == "cmd_settings")
 async def cb_settings(callback: types.CallbackQuery):
@@ -557,28 +645,108 @@ async def cmd_analyze(message: types.Message, command: CommandObject):
     if not ai_analyst:
         return
     
-    result = await ai_analyst.analyze_news(command.args, lang)
+    result = await ai_analyst.analyze_news(command.args)
+    
+    # Format the result with triple-language summaries
+    short_descs = result.get('short_descriptions', {})
+    
     response = (
         f"{get_text('analyze_result_title', lang)}\n"
-        f"{get_text('analyze_sentiment', lang, sentiment=result.get('sentiment', 'Unknown'))}\n"
-        f"{get_text('analyze_entities', lang, entities=', '.join(result.get('entities', [])))}\n"
-        f"{get_text('analyze_dates', lang, dates=', '.join(result.get('dates', [])))}\n\n"
-        f"{get_text('analyze_stored', lang)}"
+        f"📊 <b>Sentiment:</b> {result.get('sentiment', 'Unknown')}\n"
+        f"🏷 <b>Focus:</b> {', '.join(result.get('entities', []))}\n\n"
+        f"🇬🇧 <b>EN:</b> {short_descs.get('en', 'N/A')}\n\n"
+        f"🇷🇺 <b>RU:</b> {short_descs.get('ru', 'N/A')}\n\n"
+        f"🇺🇿 <b>UZ:</b> {short_descs.get('uz', 'N/A')}\n\n"
+        f"✅ <i>{get_text('analyze_stored', lang)}</i>"
     )
+    
     await status_msg.edit_text(response, reply_markup=back_to_main_kb(lang), parse_mode="HTML")
 
-# Utils
-async def broadcast_alert(message_text: str, bot):
-    """Sends a message to all active users"""
+
+async def get_user_lang(telegram_id: int) -> str:
+    """Helper to get user's language preference."""
+    async with async_session_maker() as session:
+        result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+        user = result.scalar_one_or_none()
+        return user.language_code if user else "en"
+
+def format_news_message(analysis_data: dict, news_info: dict, lang: str = "en") -> str:
+    """
+    Standardizes news alert formatting for a given language.
+    analysis_data: {'sentiment':..., 'entities':..., 'short_descriptions': {'en':..., 'ru':..., 'uz':...}}
+    news_info: {'title':..., 'link':...}
+    """
+    title = news_info.get('title', 'TON News')
+    link = news_info.get('link', '#')
+    
+    # Get localized short description
+    short_descriptions = analysis_data.get('short_descriptions', {})
+    short_desc = short_descriptions.get(lang) or analysis_data.get('short_description') or ""
+    
+    # Sentiment emoji
+    sentiment = analysis_data.get('sentiment', 'Neutral')
+    sent_emoji = "😐"
+    if "bullish" in sentiment.lower(): sent_emoji = "🚀"
+    elif "bearish" in sentiment.lower(): sent_emoji = "🐻"
+    
+    # Format entities as hashtags
+    raw_entities = analysis_data.get('entities', [])
+    if isinstance(raw_entities, str):
+        raw_entities = [e.strip() for e in raw_entities.split(',')]
+    
+    hashtags = [f"#{e.replace(' ', '')}" for e in raw_entities]
+    tags_str = " ".join(hashtags)
+    
+    # Localized headers
+    headers = {
+        "en": "🚨 <b>TON Ecosystem Alert</b>",
+        "ru": "🚨 <b>Оповещение экосистемы TON</b>",
+        "uz": "🚨 <b>TON Ekotizimi Ogohlantirishi</b>"
+    }
+    header = headers.get(lang, headers["en"])
+    
+    label_sentiment = {
+        "en": "Sentiment",
+        "ru": "Настроение",
+        "uz": "Kayfiyat"
+    }.get(lang, "Sentiment")
+    
+    label_focus = {
+        "en": "Focus",
+        "ru": "Фокус",
+        "uz": "Fokus"
+    }.get(lang, "Focus")
+    
+    message = (
+        f"{header}\n\n"
+        f"📰 <a href='{link}'>{title}</a>\n\n"
+        f"<i>{short_desc}</i>\n\n"
+        f"{sent_emoji} <b>{label_sentiment}:</b> {sentiment}\n"
+        f"🏷 <b>{label_focus}:</b> {tags_str}\n"
+    )
+    return message
+
+async def broadcast_news_alert(analysis_data: dict, news_info: dict, bot):
+    """Sends a localized news message to all active users."""
     async with async_session_maker() as session:
         result = await session.execute(select(User).where(User.is_active == True))
         users = result.scalars().all()
         
+        # Cache formatted messages for the 3 languages
+        messages = {
+            "en": format_news_message(analysis_data, news_info, "en"),
+            "ru": format_news_message(analysis_data, news_info, "ru"),
+            "uz": format_news_message(analysis_data, news_info, "uz")
+        }
+        
         for user in users:
             try:
-                await bot.send_message(chat_id=user.telegram_id, text=message_text, parse_mode="HTML")
+                lang = user.language_code or "en"
+                text = messages.get(lang, messages["en"])
+                await bot.send_message(chat_id=user.telegram_id, text=text, parse_mode="HTML", disable_web_page_preview=False)
             except Exception as e:
-                logger.error(f"Failed to send alert to {user.telegram_id}: {e}")
+                logger.error(f"Failed to send news alert to {user.telegram_id}: {e}")
+
 
 # ===================== INLINE MODE =====================
 
@@ -643,3 +811,50 @@ async def inline_query_handler(query: types.InlineQuery):
     await query.answer(results, cache_time=5)
 
 
+# ===================== TOKEN SCANNER =====================
+
+@router.message(F.text)
+async def handle_ton_address(message: types.Message, state: FSMContext):
+    """
+    Detect TON addresses and perform security audit.
+    This handler runs last (catchall for text messages).
+    """
+    # Skip if in FSM state
+    current_state = await state.get_state()
+    if current_state:
+        return
+    
+    text = message.text.strip()
+    
+    # Check if it matches TON address pattern
+    if not TON_ADDRESS_PATTERN.match(text):
+        return  # Not a TON address, ignore
+    
+    lang = await get_user_lang(message.from_user.id)
+    
+    # Check service availability
+    if not token_scanner:
+        await message.answer(get_text("audit_unavailable", lang), parse_mode="HTML")
+        return
+    
+    # Send scanning message
+    status_msg = await message.answer(get_text("audit_scanning", lang), parse_mode="HTML")
+    
+    try:
+        # Fetch token data
+        token_data = await token_scanner.scan_token(text)
+        
+        if not token_data:
+            await status_msg.edit_text(get_text("audit_not_found", lang), parse_mode="HTML")
+            return
+        
+        # Analyze security
+        analysis = token_scanner.analyze_security(token_data)
+        
+        # Format and send report
+        report = token_scanner.format_audit_report(analysis, lang)
+        await status_msg.edit_text(report, parse_mode="HTML")
+        
+    except Exception as e:
+        logger.error(f"Token audit error: {e}")
+        await status_msg.edit_text(get_text("audit_error", lang), parse_mode="HTML")

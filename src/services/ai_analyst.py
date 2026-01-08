@@ -13,19 +13,25 @@ class AIAnalyst:
         )
         self.model_name = "tngtech/deepseek-r1t2-chimera:free"
 
-    async def analyze_news(self, text: str, lang: str = "en") -> dict:
+    async def analyze_news(self, text: str) -> dict:
         """
-        Analyzes news text to extract key info and stores it in memory.
+        Analyzes news text to generate summaries in EN, RU, and UZ.
+        Returns: {
+            'sentiment': 'Bullish', 
+            'entities': ['TON', 'Telegram'], 
+            'dates': [],
+            'short_descriptions': {'en': '...', 'ru': '...', 'uz': '...'}
+        }
         """
-        lang_name = {"en": "English", "ru": "Russian", "uz": "Uzbek"}.get(lang, "English")
         system_prompt = (
-            f"You are an expert crypto analyst specializing in the TON ecosystem. "
-            f"Analyze the input news. Extract key entities, sentiment (Bullish/Bearish/Neutral), "
-            f"and identify any specific dates mentioned. "
-            f"Also provide a 'short_description': a 1-2 sentence engaging summary of why this is important for a trader/investor. "
-            f"Return the result as a valid JSON string with keys: 'entities', 'sentiment', 'dates', 'short_description'. "
-            f"Do not include markdown formatting like ```json ... ```, just the raw JSON. "
-            f"Respond in {lang_name}."
+            "You are an expert crypto analyst specializing in the TON ecosystem. "
+            "Analyze the input news. Extract key entities, sentiment (Bullish/Bearish/Neutral), "
+            "and identify any specific dates mentioned. "
+            "Provide an 'engaging' 1-2 sentence short description for each of the following languages: English, Russian, and Uzbek. "
+            "Return the result as a raw valid JSON string with these EXACT keys: "
+            "'entities' (list), 'sentiment' (string), 'dates' (list), "
+            "'short_descriptions' (object with keys 'en', 'ru', 'uz'). "
+            "Do not include markdown formatting or ANY other text, just the raw JSON."
         )
         
         try:
@@ -33,52 +39,58 @@ class AIAnalyst:
                 model=self.model_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"News:\n{text}"}
+                    {"role": "user", "content": f"News Content:\n{text}"}
                 ]
             )
             
-            analysis_json = response.choices[0].message.content.strip()
-            # Clean up potential markdown code blocks if the model ignores instruction
-            if analysis_json.startswith("```json"):
-                analysis_json = analysis_json[7:]
-            if analysis_json.endswith("```"):
-                analysis_json = analysis_json[:-3]
+            content = response.choices[0].message.content.strip()
+            # Clean up potential markdown code blocks
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
             
-            analysis_dict = json.loads(analysis_json)
+            analysis_dict = json.loads(content)
             
-            # Store in memory
+            # Extract descriptions
+            short_descs = analysis_dict.get('short_descriptions', {})
+            en_desc = short_descs.get('en', '')
+            
+            # Store in memory for RAG (using English version as primary for retrieval)
             metadata = {
                 "type": "news_analysis",
                 "sentiment": analysis_dict.get("sentiment", "Neutral"),
-                # Flatten lists for metadata compatibility if needed, or store as string
                 "entities": ", ".join(analysis_dict.get("entities", [])),
-                "dates": ", ".join(analysis_dict.get("dates", []))
+                "dates": ", ".join(analysis_dict.get("dates", [])),
+                "desc_en": en_desc,
+                "desc_ru": short_descs.get('ru', ''),
+                "desc_uz": short_descs.get('uz', '')
             }
             
-            # We store the original text combined with the analysis summary for better retrieval context
-            # Fallback to empty string if short_description is missing, but check for old 'summary' key just in case
-            summary_text = analysis_dict.get('short_description') or analysis_dict.get('summary', '')
-            memory_content = f"News: {text}\nAnalysis: {summary_text}"
-            
+            memory_content = f"News: {text}\nShort Analysis (EN): {en_desc}"
             await self.memory_service.add_memory(text=memory_content, metadata=metadata)
             
             return analysis_dict
 
         except Exception as e:
             logger.error(f"Error in analyze_news: {e}")
-            return {}
+            return {
+                "entities": [],
+                "sentiment": "Neutral",
+                "dates": [],
+                "short_descriptions": {"en": "", "ru": "", "uz": ""}
+            }
 
-    async def generate_daily_forecast(self, market_data: str, lang: str = "en") -> str:
+    async def generate_daily_forecast(self, market_data: str) -> dict:
         """
-        Generates a daily forecast using RAG (Upcoming events) and current market data.
+        Generates a daily forecast in EN, RU, and UZ.
+        Returns: {'en': '...', 'ru': '...', 'uz': '...'}
         """
-        lang_name = {"en": "English", "ru": "Russian", "uz": "Uzbek"}.get(lang, "English")
         try:
             # 1. Retrieve relevant context
             query = "Upcoming events for TON"
             rag_results = await self.memory_service.query_memory(query, n_results=5)
             
-            # Extract documents from results
             memories = []
             if rag_results and 'documents' in rag_results:
                 for doc_list in rag_results['documents']:
@@ -86,12 +98,14 @@ class AIAnalyst:
             
             context_str = "\n".join(memories) if memories else "No specific upcoming events found in memory."
 
-            # 2. Prompt OpenRouter
+            # 2. Prompt OpenRouter for triple language output
             prompt = (
                 f"Context (Known Events/News):\n{context_str}\n\n"
                 f"Current Market Data:\n{market_data}\n\n"
-                "Based on the historical context, upcoming events, and current market data, "
-                f"predict the market trend for the day for TON. Be specific and logical. Respond in {lang_name}."
+                "Based on the context and data, predict the TON market trend for today. "
+                "Provide a detailed, logical forecast for each of these languages: English, Russian, and Uzbek. "
+                "Return the result as a raw JSON object with keys: 'en', 'ru', 'uz'. "
+                "Do not include markdown or extra text. Just the raw JSON."
             )
 
             response = self.client.chat.completions.create(
@@ -101,8 +115,16 @@ class AIAnalyst:
                     {"role": "user", "content": prompt}
                 ]
             )
-            return response.choices[0].message.content
+            
+            content = response.choices[0].message.content.strip()
+            # Clean up potential markdown
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            
+            return json.loads(content)
         
         except Exception as e:
             logger.error(f"Error in generate_daily_forecast: {e}")
-            return "Unable to generate forecast due to an error."
+            return {"en": "Unable to generate forecast.", "ru": "Не удалось создать прогноз.", "uz": "Prognoz yaratib bo'lmadi."}

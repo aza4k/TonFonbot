@@ -13,6 +13,8 @@ from src.services.ai_analyst import AIAnalyst
 from src.services.price_monitor import PriceMonitor
 from src.services.chart_generator import ChartGenerator
 from src.services.rss_fetcher import RSSFetcher
+from src.services.token_scanner import TokenScanner
+from src.services.stats_generator import StatsGenerator
 from src.bot import handlers
 
 async def channel_price_task(bot: Bot, price_monitor: PriceMonitor):
@@ -50,17 +52,26 @@ async def channel_price_task(bot: Bot, price_monitor: PriceMonitor):
             logger.error(f"Channel price task error: {e}")
             await asyncio.sleep(60)
 
-async def broadcast_to_channels(message: str, bot: Bot, news_lang: str = "en"):
-    """Send news to channels with news_enabled and matching language."""
+async def broadcast_to_channels(analysis_data: dict, news_info: dict, bot: Bot):
+    """Send news to channels using their configured language."""
     async with async_session_maker() as session:
         result = await session.execute(
-            select(Channel).where(Channel.news_enabled == True, Channel.news_language == news_lang)
+            select(Channel).where(Channel.news_enabled == True)
         )
         channels = result.scalars().all()
     
+    # Cache formatted messages
+    messages = {
+        "en": handlers.format_news_message(analysis_data, news_info, "en"),
+        "ru": handlers.format_news_message(analysis_data, news_info, "ru"),
+        "uz": handlers.format_news_message(analysis_data, news_info, "uz")
+    }
+    
     for channel in channels:
         try:
-            await bot.send_message(chat_id=channel.channel_id, text=message, parse_mode="HTML")
+            lang = channel.news_language or "en"
+            text = messages.get(lang, messages["en"])
+            await bot.send_message(chat_id=channel.channel_id, text=text, parse_mode="HTML", disable_web_page_preview=False)
         except Exception as e:
             logger.error(f"Failed to send news to channel {channel.channel_id}: {e}")
 
@@ -87,13 +98,16 @@ async def main():
     ai_analyst = AIAnalyst(memory_service=memory_service)
     price_monitor = PriceMonitor(symbol='TON/USDT')
     chart_generator = ChartGenerator(symbol='TON/USDT')
+    token_scanner = TokenScanner()
+    stats_generator = StatsGenerator()
     
     # Define Alert Callback (Universal Broadcaster)
-    async def broadcast_message(message: str):
+    async def broadcast_message(analysis_data: dict, news_info: dict):
         # Broadcast to users
-        await handlers.broadcast_alert(message, bot)
-        # Broadcast to channels with news enabled (default English)
-        await broadcast_to_channels(message, bot, "en")
+        await handlers.broadcast_news_alert(analysis_data, news_info, bot)
+        # Broadcast to channels
+        await broadcast_to_channels(analysis_data, news_info, bot)
+
 
     # Initialize RSS Fetcher with AI and Broadcaster
     # Interval set to 600s (10 min)
@@ -108,6 +122,8 @@ async def main():
     handlers.price_monitor = price_monitor
     handlers.chart_generator = chart_generator
     handlers.ai_analyst = ai_analyst
+    handlers.token_scanner = token_scanner
+    handlers.stats_generator = stats_generator
     
     price_monitor.on_alert = broadcast_message
 
@@ -129,6 +145,8 @@ async def main():
         rss_fetcher.stop()
         await price_monitor.stop()
         await chart_generator.close()
+        await token_scanner.close()
+        await stats_generator.close()
         
         rss_task.cancel()
         price_task.cancel()
