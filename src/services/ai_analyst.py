@@ -3,6 +3,10 @@ from openai import OpenAI
 from loguru import logger
 from src.config import config
 from src.services.memory_service import MemoryService
+from src.database.core import async_session_maker, SavedForecast
+from sqlalchemy import select, desc
+import time
+from datetime import datetime
 
 class AIAnalyst:
     def __init__(self, memory_service: MemoryService):
@@ -116,15 +120,60 @@ class AIAnalyst:
                 ]
             )
             
-            content = response.choices[0].message.content.strip()
-            # Clean up potential markdown
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-            
-            return json.loads(content)
+            try:
+                content = response.choices[0].message.content.strip()
+                # Clean up potential markdown
+                if content.startswith("```"):
+                    content = content.split("```")[1]
+                    if content.startswith("json"):
+                        content = content[4:]
+                
+                result = json.loads(content)
+                
+                # Save to DB
+                async with async_session_maker() as session:
+                    now = datetime.now()
+                    date_str = now.strftime("%Y-%m-%d")
+                    # Determine slot roughly by hour (can be refined by caller)
+                    hour = now.hour
+                    slot = "morning" if hour < 14 else "evening"
+                    
+                    forecast = SavedForecast(
+                        date=date_str,
+                        time_slot=slot,
+                        content_en=result.get('en', ''),
+                        content_ru=result.get('ru', ''),
+                        content_uz=result.get('uz', ''),
+                        created_at=int(time.time())
+                    )
+                    session.add(forecast)
+                    await session.commit()
+                    
+                return result
+
+            except Exception as e:
+                logger.error(f"Error parsing forecast response: {e}, content: {content}")
+                return {"en": "Forecast generation failed.", "ru": "Ошибка генерации.", "uz": "Prognoz xatosi."}
         
         except Exception as e:
             logger.error(f"Error in generate_daily_forecast: {e}")
             return {"en": "Unable to generate forecast.", "ru": "Не удалось создать прогноз.", "uz": "Prognoz yaratib bo'lmadi."}
+
+    async def get_latest_forecast(self) -> dict | None:
+        """Retrieves the most recent forecast from the DB."""
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(SavedForecast).order_by(desc(SavedForecast.created_at)).limit(1)
+            )
+            forecast = result.scalar_one_or_none()
+            
+            if not forecast:
+                return None
+            
+            return {
+                "en": forecast.content_en,
+                "ru": forecast.content_ru,
+                "uz": forecast.content_uz,
+                "date": forecast.date,
+                "time_slot": forecast.time_slot
+            }

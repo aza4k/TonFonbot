@@ -198,13 +198,21 @@ async def cb_forecast(callback: types.CallbackQuery):
             await callback.message.edit_text(msg, reply_markup=back_to_main_kb(lang))
         return
 
-    current_price = await price_monitor.fetch_price()
-    market_data_str = f"Current TON Price: ${current_price}" if current_price else "Price data unavailable."
-    
     try:
-        forecast_dict = await ai_analyst.generate_daily_forecast(market_data_str)
+        # Try to get cached forecast first
+        forecast_dict = await ai_analyst.get_latest_forecast()
+        
+        if not forecast_dict:
+            # Fallback to generation if missing
+            current_price = await price_monitor.fetch_price()
+            market_data_str = f"Current TON Price: ${current_price}" if current_price else "Price data unavailable."
+            forecast_dict = await ai_analyst.generate_daily_forecast(market_data_str)
+            
         forecast = forecast_dict.get(lang, forecast_dict.get('en', 'No forecast available.'))
-    except Exception:
+        forecast += "\n\n🤖 <i>Analyzed by @TonFonBot</i>"
+        
+    except Exception as e:
+        logger.error(f"Forecast error: {e}")
         forecast = get_text("forecast_unavailable", lang)
     
     response = f"{get_text('forecast_title', lang)}\n\n{forecast}"

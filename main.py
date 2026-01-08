@@ -16,6 +16,8 @@ from src.services.rss_fetcher import RSSFetcher
 from src.services.token_scanner import TokenScanner
 from src.services.stats_generator import StatsGenerator
 from src.bot import handlers
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from src.tasks import generate_forecast_task, broadcast_stats_task, broadcast_forecast_task, broadcast_ads_task
 
 async def channel_price_task(bot: Bot, price_monitor: PriceMonitor):
     """Background task to send price updates to channels at their configured intervals."""
@@ -135,6 +137,26 @@ async def main():
     rss_task = asyncio.create_task(rss_fetcher.start())
     channel_task = asyncio.create_task(channel_price_task(bot, price_monitor))
     
+    # Initialize Scheduler
+    scheduler = AsyncIOScheduler(timezone="Asia/Tashkent") # Explicitly set UZB time
+    
+    # 1. Generate Forecast: Twice a day (e.g., 08:30 and 20:30) to be ready for broadcast
+    # Broadcast is at 9:01, so generation should happen before. 
+    # User said: "execute it twice a day... 12-hour interval". Let's do 08:50 and 20:50.
+    scheduler.add_job(generate_forecast_task, 'cron', hour=8, minute=50, args=[ai_analyst, price_monitor])
+    scheduler.add_job(generate_forecast_task, 'cron', hour=20, minute=50, args=[ai_analyst, price_monitor])
+    
+    # 2. Statistics Broadcast: Once a day at 9:00 UZB
+    scheduler.add_job(broadcast_stats_task, 'cron', hour=9, minute=0, args=[stats_generator, bot])
+    
+    # 3. Forecast Broadcast: Once a day at 9:01 UZB
+    scheduler.add_job(broadcast_forecast_task, 'cron', hour=9, minute=1, args=[ai_analyst, bot])
+    
+    # 4. Ads for Price Channels: Every hour
+    scheduler.add_job(broadcast_ads_task, 'interval', hours=1, args=[bot])
+    
+    scheduler.start()
+    
     try:
         logger.info("Bot is online. Polling...")
         await dp.start_polling(bot)
@@ -142,6 +164,8 @@ async def main():
         logger.error(f"Bot stopped with error: {e}")
     finally:
         logger.info("Shutting down services...")
+        if 'scheduler' in locals():
+            scheduler.shutdown()
         rss_fetcher.stop()
         await price_monitor.stop()
         await chart_generator.close()

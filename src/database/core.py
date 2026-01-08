@@ -28,6 +28,17 @@ class Channel(Base):
     news_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     news_language: Mapped[str] = mapped_column(String(10), default="en")
 
+class SavedForecast(Base):
+    __tablename__ = "saved_forecasts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    date: Mapped[str] = mapped_column(String(20), index=True)  # YYYY-MM-DD
+    time_slot: Mapped[str] = mapped_column(String(10))         # "morning" or "evening"
+    content_en: Mapped[str] = mapped_column(String)
+    content_ru: Mapped[str] = mapped_column(String)
+    content_uz: Mapped[str] = mapped_column(String)
+    created_at: Mapped[int] = mapped_column(BigInteger)        # Unix timestamp
+
 # 2. Connection Logic
 DATABASE_URL = "sqlite+aiosqlite:///./bot.db"
 
