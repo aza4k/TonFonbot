@@ -1,4 +1,4 @@
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0088CC,100:1A1A2E&height=200&section=header&text=TonFonbot&fontSize=80&fontColor=ffffff&fontAlignY=38&desc=AI-Powered%20Analytics%20%26%20News%20Platform%20for%20TON%20Ecosystem&descAlignY=60&descSize=16" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:6C3483,100:02569B&height=200&section=header&text=TonFonbot&fontSize=80&fontColor=ffffff&fontAlignY=38&desc=Analytics.%20Ai.%20News.%20Ton%20Ecosystem.&descAlignY=60&descSize=18" width="100%"/>
 
 <div align="right">
 
